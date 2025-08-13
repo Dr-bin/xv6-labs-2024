@@ -1,0 +1,12 @@
+usertrap called syscall
+
+a7=7 (代表SYS_exec)
+
+之前运行在用户态模式（0010 0000 0000 0000 0000 0000 0010 0010）
+SPP=0
+
+lw	a3,0(zero); num 对应 a3
+
+Kernel tried to read unmapped address 0 (scause=0xd)
+
+Process: init, pid=1
