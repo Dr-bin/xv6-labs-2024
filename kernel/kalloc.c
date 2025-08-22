@@ -21,13 +21,24 @@ struct run {
 struct {
   struct spinlock lock;
   struct run *freelist;
-} kmem;
+} kmem, supermem;
+// 为链表新增超级页实例
+
+// 新增的init函数，初始化超级页的空闲链表
+void superinit(){
+  initlock(&supermem.lock, "supermem");
+  char *p;
+  p = (char*)SUPERPGROUNDUP((uint64)SUPERBASE);
+  for(; p + SUPERPGSIZE <= (char*)PHYSTOP; p += SUPERPGSIZE)
+    superfree(p);
+}
 
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
-  freerange(end, (void*)PHYSTOP);
+  freerange(end, (void*)SUPERBASE);
+  superinit();
 }
 
 void
@@ -62,6 +73,23 @@ kfree(void *pa)
   release(&kmem.lock);
 }
 
+//free超级页
+void superfree(void *pa) {
+  struct run *r;
+  // 改成超级页的尺寸
+  if(((uint64)pa % SUPERPGSIZE) != 0 || (uint64)pa < SUPERBASE || (uint64)pa >= PHYSTOP)
+    panic("superfree");
+  // memset，将内存为都置1，表示处于空闲中
+  memset(pa, 1, SUPERPGSIZE);
+  
+  r = (struct run*)pa;
+  // 加锁，保证链表插入顺序
+  acquire(&supermem.lock);
+  r->next = supermem.freelist;
+  supermem.freelist = r;
+  release(&supermem.lock);
+}
+
 // Allocate one 4096-byte page of physical memory.
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
@@ -79,4 +107,24 @@ kalloc(void)
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+void* superalloc(void) {
+  struct run *r;
+  // 获取锁
+  acquire(&supermem.lock);
+  r = supermem.freelist;
+  if(r){
+    // printf("Allocating superpage at: 0x%lx\n", (uint64)r);
+    // 更新空闲页链表
+    supermem.freelist = r->next;
+  }
+  // else{
+  //   printf("superalloc: no free superpages available\n");
+  // }
+  release(&supermem.lock);
+
+  if(r)
+    memset((char*)r, 5, SUPERPGSIZE); // fill with junk
+  return (void*)r; 
 }

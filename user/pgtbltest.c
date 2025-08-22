@@ -4,6 +4,7 @@
 #include "kernel/riscv.h"
 #include "user/user.h"
 
+//8MB
 #define N (8 * (1 << 20))
 
 void print_pgtbl();
