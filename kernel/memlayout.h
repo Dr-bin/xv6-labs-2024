@@ -42,8 +42,9 @@
 // from physical address 0x80000000 to PHYSTOP.
 #define KERNBASE 0x80000000L
 #define PHYSTOP (KERNBASE + 128*1024*1024)//64MB
-//此处分配12页超页占24MB，剩下的空间留给普通页
-#define SUPERBASE (KERNBASE + 512 * PGSIZE * 12)
+//此处分配6页超页占12MB，剩下的空间留给普通页
+#define SUPERPAGE_COUNT 6
+#define SUPERBASE (PHYSTOP - SUPERPAGE_COUNT * SUPERPGSIZE)
 
 // map the trampoline page to the highest address,
 // in both user and kernel space.

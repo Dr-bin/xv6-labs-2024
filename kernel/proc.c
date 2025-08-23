@@ -305,8 +305,10 @@ growproc(int n)
   struct proc *p = myproc();
 
   sz = p->sz;
+  // printf("growproc: old sz=%ld, n=%d\n", sz, n);
   if(n > 0){
     if((sz = uvmalloc(p->pagetable, sz, sz + n, PTE_W)) == 0) {
+      // printf("growproc: uvmalloc failed\n");
       return -1;
     }
   } else if(n < 0){
@@ -325,8 +327,8 @@ fork(void)
   struct proc *np;
   struct proc *p = myproc();
 
-  // 添加调试信息
-  printf("fork: attempting to allocate new process\n");
+  // // 添加调试信息
+  // printf("fork: attempting to allocate new process\n");
 
   // Allocate process.
   if((np = allocproc()) == 0){
@@ -393,6 +395,7 @@ reparent(struct proc *p)
 void
 exit(int status)
 {
+  // printf("exit: pid=%d, sz=%ld\n", myproc()->pid, myproc()->sz);
   struct proc *p = myproc();
 
   if(p == initproc)

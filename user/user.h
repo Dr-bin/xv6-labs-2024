@@ -37,6 +37,7 @@ int ugetpid(void);
 uint64 pgpte(void*);
 void kpgtbl(void);
 #endif
+int count_free_pages(void);
 
 // ulib.c
 int stat(const char*, struct stat*);

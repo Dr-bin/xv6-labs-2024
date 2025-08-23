@@ -29,25 +29,36 @@ void superinit(){
   initlock(&supermem.lock, "supermem");
   char *p;
   p = (char*)SUPERPGROUNDUP((uint64)SUPERBASE);
-  for(; p + SUPERPGSIZE <= (char*)PHYSTOP; p += SUPERPGSIZE)
+  printf("superinit: start=%p, end=%lx\n", p, PHYSTOP);
+
+  for(; p + SUPERPGSIZE <= (char*)PHYSTOP; p += SUPERPGSIZE){
+    printf("superfree: %p\n", p);
     superfree(p);
+  }
 }
 
 void
 kinit()
 {
+  printf("kinit: freeing range %p to %p\n", end, (void*)SUPERBASE);
+  printf("superinit: superbase=%lx, phystop=%lx\n", SUPERBASE, PHYSTOP);
   initlock(&kmem.lock, "kmem");
   freerange(end, (void*)SUPERBASE);
   superinit();
 }
 
-void
+void 
 freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
-  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+  printf("freerange: from %p to %p\n", p, pa_end);
+  int count = 0;
+  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE) {
     kfree(p);
+    count++;
+  }
+  printf("freerange: freed %d pages\n", count);
 }
 
 // Free the page of physical memory pointed at by pa,
@@ -75,6 +86,7 @@ kfree(void *pa)
 
 //free超级页
 void superfree(void *pa) {
+  // printf("superfree: freeing superpage at %p\n", pa);
   struct run *r;
   // 改成超级页的尺寸
   if(((uint64)pa % SUPERPGSIZE) != 0 || (uint64)pa < SUPERBASE || (uint64)pa >= PHYSTOP)
@@ -116,7 +128,7 @@ void* superalloc(void) {
   r = supermem.freelist;
   if(r){
     // printf("Allocating superpage at: 0x%lx\n", (uint64)r);
-    // 更新空闲页链表
+    //更新空闲页链表
     supermem.freelist = r->next;
   }
   // else{
@@ -124,7 +136,21 @@ void* superalloc(void) {
   // }
   release(&supermem.lock);
 
-  if(r)
+  if(r){
     memset((char*)r, 5, SUPERPGSIZE); // fill with junk
+    // printf("superalloc: allocated superpage at %p\n", r);
+  }
   return (void*)r; 
+}
+
+int count_free_pages() {
+  int count = 0;
+  acquire(&kmem.lock);
+  struct run *r = kmem.freelist;
+  while(r) {
+    count++;
+    r = r->next;
+  }
+  release(&kmem.lock);
+  return count;
 }

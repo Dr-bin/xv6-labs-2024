@@ -2063,6 +2063,10 @@ sbrkbasic(char *s)
 void
 sbrkmuch(char *s)
 {
+  // 首先获取当前空闲页数
+  int initial_free_pages = count_free_pages();
+  printf("Initial free pages: %d\n", initial_free_pages);
+
   enum { BIG=100*1024*1024 };
   char *c, *oldbrk, *a, *lastaddr, *p;
   uint64 amt;

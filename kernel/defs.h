@@ -69,6 +69,7 @@ void*           kalloc(void);
 void            superfree(void *);
 void            kfree(void *);
 void            kinit(void);
+int             count_free_pages(void);
 
 // log.c
 void            initlog(int, struct superblock*);

@@ -43,6 +43,7 @@ sys_sbrk(void)
 
   argint(0, &n);
   addr = myproc()->sz;
+  // printf("sbrk: current sz=%ld, n=%d\n", addr, n);
   if(growproc(n) < 0)
     return -1;
   return addr;
@@ -122,4 +123,10 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+uint64
+sys_count_free_pages(void)
+{
+  return count_free_pages();
 }

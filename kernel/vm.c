@@ -278,10 +278,14 @@ void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     // 如果需要释放物理页帧
     if(do_free){
       uint64 pa = PTE2PA(*pte);
-      if (pa >= SUPERBASE) 
+      if (pa >= SUPERBASE) {
+        // printf("uvmunmap: superfree %p\n", (void*)pa);
         superfree((void*)pa); // 释放超级页
-      else 
+      }
+      else {
+        // printf("uvmunmap: kfree %p\n", (void*)pa);
         kfree((void*)pa);     // 释放普通页
+      }
     }
     // 清空页表项
     *pte = 0;
@@ -352,7 +356,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
     }
   }
   // 第二步：尽可能使用超级页批量分配，提升性能并减少页表开销
-  for(; a + SUPERPGSIZE < newsz; a += sz){
+  for(; a + SUPERPGSIZE <= newsz; a += sz){
     // printf("Phase 2 - Superpages: a=0x%lx\n", a);
     sz = SUPERPGSIZE; 
     mem = superalloc(); 
@@ -453,8 +457,8 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   char *mem;
   int szinc;
 
-  // 添加调试信息
-  printf("uvmcopy: copying %d bytes from %p to %p\n", (int)sz, old, new);
+  // // 添加调试信息
+  // printf("uvmcopy: copying %d bytes from %p to %p\n", (int)sz, old, new);
 
   for(i = 0; i < sz; i += szinc){
     szinc = PGSIZE;
@@ -468,9 +472,9 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
 
-    // 添加页表项信息调试
-    printf("uvmcopy: va=0x%lx, pte=0x%lx, pa=0x%lx, flags=%x\n", 
-           i, *pte, pa, flags);
+    // // 添加页表项信息调试
+    // printf("uvmcopy: va=0x%lx, pte=0x%lx, pa=0x%lx, flags=%x\n", 
+    //        i, *pte, pa, flags);
 
     // 判断是普通页还是超级页
     if(pa >= SUPERBASE) {
