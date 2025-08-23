@@ -453,6 +453,9 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   char *mem;
   int szinc;
 
+  // 添加调试信息
+  printf("uvmcopy: copying %d bytes from %p to %p\n", (int)sz, old, new);
+
   for(i = 0; i < sz; i += szinc){
     szinc = PGSIZE;
     // 找到 old 页表中当前虚拟地址 i 对应的页表项
@@ -465,14 +468,22 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
 
+    // 添加页表项信息调试
+    printf("uvmcopy: va=0x%lx, pte=0x%lx, pa=0x%lx, flags=%x\n", 
+           i, *pte, pa, flags);
+
     // 判断是普通页还是超级页
     if(pa >= SUPERBASE) {
       szinc = SUPERPGSIZE;  // 超级页大小
-      if((mem = superalloc()) == 0)
+      if((mem = superalloc()) == 0){
+        printf("uvmcopy: superalloc FAILED at va=0x%lx\n", i);
         goto err;
+      }
     } else {
-      if((mem = kalloc()) == 0)
+      if((mem = kalloc()) == 0){
+        printf("uvmcopy: kalloc FAILED at va=0x%lx\n", i);
         goto err;
+      }
     }
     
     // 根据页面大小复制内容
@@ -484,6 +495,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     
     // 根据页面大小进行映射
     if(mappages(new, i, szinc, (uint64)mem, flags) != 0){  // 使用正确的size
+      printf("uvmcopy: mappages FAILED at va=0x%lx\n", i);
       if(pa >= SUPERBASE)
         superfree(mem);
       else

@@ -119,6 +119,8 @@ allocproc(void)
       release(&p->lock);
     }
   }
+  // 添加调试信息：进程表已满
+  printf("allocproc: no free procs in table\n");
   return 0;
 
 found:
@@ -127,6 +129,8 @@ found:
 
  // Allocate trapframe first
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
+    // 添加调试信息
+    printf("allocproc: kalloc for trapframe failed\n");
     freeproc(p);
     release(&p->lock);
     return 0;
@@ -142,6 +146,8 @@ found:
 
   // 分配和映射 USYSCALL 页
   if((p->usyscall = (struct usyscall *)kalloc()) == 0){
+    // 添加调试信息
+    printf("allocproc: kalloc for usyscall failed\n");
     freeproc(p);
     release(&p->lock);
     return 0;
@@ -154,6 +160,8 @@ found:
   // Rest of the initialization...
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
+    // 添加调试信息
+    printf("allocproc: proc_pagetable failed\n");
     freeproc(p);
     release(&p->lock);
     return 0;
@@ -317,13 +325,18 @@ fork(void)
   struct proc *np;
   struct proc *p = myproc();
 
+  // 添加调试信息
+  printf("fork: attempting to allocate new process\n");
+
   // Allocate process.
   if((np = allocproc()) == 0){
+    printf("fork: allocproc failed - no available process slot\n");
     return -1;
   }
 
   // Copy user memory from parent to child.
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+    printf("fork: uvmcopy failed - memory allocation error\n");
     freeproc(np);
     release(&np->lock);
     return -1;
