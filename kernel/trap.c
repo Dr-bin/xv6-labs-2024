@@ -76,9 +76,40 @@ usertrap(void)
   if(killed(p))
     exit(-1);
 
+  if(which_dev == 2) {
+    // Timer interrupt - 处理警报
+    acquire(&p->alarm_lock);
+    if(which_dev == 2 && p->alarm_interval > 0) {
+      p->alarm_ticks--;
+      
+      // printf("hart %d: proc %d, ticks %d/%d, handling %d\n", 
+      //       cpuid(), p->pid, p->alarm_ticks, p->alarm_interval, p->alarm_handling);
+      
+      if(p->alarm_ticks <= 0 && p->alarm_handling == 0) {
+        // 保存状态并设置处理程序
+        if(p->alarm_trapframe == 0) {
+          p->alarm_trapframe = (struct trapframe*)kalloc();
+          if(p->alarm_trapframe == 0) {
+            p->alarm_interval = 0; // 内存分配失败，禁用警报
+          }
+        }
+        if(p->alarm_trapframe) {
+          *p->alarm_trapframe = *p->trapframe;
+          p->trapframe->epc = (uint64)p->alarm_handler;
+          p->alarm_ticks = p->alarm_interval;
+          p->alarm_handling = 1;
+          
+          // printf("hart %d: handler setup complete\n", cpuid());
+        }
+      }
+    }
+    release(&p->alarm_lock);
+  }
+
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2) {
     yield();
+  }
 
   usertrapret();
 }

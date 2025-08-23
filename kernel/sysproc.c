@@ -57,6 +57,9 @@ sys_sleep(void)
   argint(0, &n);
   if(n < 0)
     n = 0;
+
+  backtrace();
+  
   acquire(&tickslock);
   ticks0 = ticks;
   while(ticks - ticks0 < n){
@@ -90,4 +93,56 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+// 在 kernel/sysproc.c 中
+
+uint64
+sys_sigalarm(void)
+{
+  int interval;
+  uint64 handler;
+  
+  argint(0, &interval);
+  argaddr(1, &handler);
+  
+  struct proc *p = myproc();
+  
+  // // 修正：使用 %lx 格式打印 uint64
+  // printf("sys_sigalarm: pid=%d, interval=%d, handler=%lx\n",
+  //        p->pid, interval, handler);
+  
+  p->alarm_interval = interval;
+  p->alarm_ticks = interval;
+  p->alarm_handler = (void(*)())handler;
+  p->alarm_handling = 0;
+  
+  return 0;
+}
+
+uint64
+sys_sigreturn(void)
+{
+  struct proc *p = myproc();
+  
+  // printf("sys_sigreturn: pid=%d, restoring state\n", p->pid);
+  
+  if(p->alarm_trapframe == 0) {
+    printf("sys_sigreturn: no saved trapframe!\n");
+    return -1;
+  }
+  
+  // 恢复保存的trapframe
+  *p->trapframe = *p->alarm_trapframe;
+  
+  // 释放内存
+  kfree((void*)p->alarm_trapframe);
+  p->alarm_trapframe = 0;
+  p->alarm_handling = 0;
+  
+  // // 修正：使用 %lx 格式打印 uint64
+  // printf("sys_sigreturn: restored epc=%lx, a0=%lx\n",
+  //        p->trapframe->epc, p->trapframe->a0);
+  
+  return p->trapframe->a0;
 }

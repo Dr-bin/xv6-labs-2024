@@ -176,3 +176,29 @@ printfinit(void)
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
+
+void
+backtrace(void)
+{
+  printf("backtrace:\n");
+  
+  uint64 fp = r_fp();  // 当前帧指针
+  uint64 stack_page = PGROUNDDOWN(fp);  // 栈所在的页
+  
+  // 遍历栈帧直到栈底
+  while (fp < stack_page + PGSIZE) {
+    // 返回地址位于fp - 8
+    uint64 ra = *(uint64*)(fp - 8);
+    printf("%p\n", (void*)ra);
+    
+    // 上一帧的帧指针位于fp - 16
+    uint64 prev_fp = *(uint64*)(fp - 16);
+    
+    // 检查是否到达栈底（prev_fp为0或无效）
+    if (prev_fp <= fp || prev_fp >= stack_page + PGSIZE) {
+      break;
+    }
+    
+    fp = prev_fp;
+  }
+}
