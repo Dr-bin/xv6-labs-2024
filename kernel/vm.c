@@ -635,43 +635,27 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 
 
 #ifdef LAB_PGTBL
-/**
- * 递归打印页表结构
- * pagetable: 当前层级的页表
- * level: 当前层级 (0-2)
- * va: 当前页表对应的虚拟地址起始值
- */
-void printwalk(pagetable_t pagetable, int level, uint64 va)
+void printwalk(pagetable_t pagetable, int level, uint64 base_va, int depth)
 {
     for(int i = 0; i < 512; i++) {
         pte_t pte = pagetable[i];
         if(pte & PTE_V) {
-            // 计算当前虚拟地址：va + i * (下一级管理的空间)
-            uint64 new_va = va;
-            if(level == 0)
-             new_va += i * PGSIZE;
-            else if(level == 1)
-             new_va += i * (512 * PGSIZE);  // 2MB
-            else if(level == 2)
-             new_va += i * (512 * 512 * PGSIZE); // 1GB
+            uint64 va = base_va + (i * (1L << (12 + 9 * level)));
             
-            // 打印
-            for(int j = 2; j > level; j--) printf(" ..");
-            printf("%p: pte %p pa %p\n", (pagetable_t)new_va, (pagetable_t)pte, (pagetable_t)PTE2PA(pte));
+            // 打印缩进
+            for(int j = 0; j < depth; j++) printf(" ..");
+            printf("%p: pte %p pa %p\n", (void*)va, (void*)pte, (void*)PTE2PA(pte));
             
             if((pte & (PTE_R|PTE_W|PTE_X)) == 0) {
-                printwalk((pagetable_t)PTE2PA(pte), level - 1, new_va);
+                printwalk((pagetable_t)PTE2PA(pte), level - 1, va, depth + 1);
             }
         }
     }
 }
 
-void
-vmprint(pagetable_t pagetable) {
-  // your code here
-  printf("page table %p\n", pagetable);
-  // 从顶级页表开始，虚拟地址从0开始
-  printwalk(pagetable, 2, 0);
+void vmprint(pagetable_t pagetable) {
+    printf("page table %p\n", pagetable);
+    printwalk(pagetable, 2, 0, 1); // level=2 (顶级), base_va=0, depth=1
 }
 #endif
 
