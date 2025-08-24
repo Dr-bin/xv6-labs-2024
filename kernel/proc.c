@@ -136,27 +136,13 @@ found:
     return 0;
   }
 
-  // 先创建页表
-  p->pagetable = proc_pagetable(p);
-  if(p->pagetable == 0){
-    freeproc(p);
-    release(&p->lock);
-    return 0;
-  }
-
-  // 分配和映射 USYSCALL 页
   if((p->usyscall = (struct usyscall *)kalloc()) == 0){
-    // 添加调试信息
-    printf("allocproc: kalloc for usyscall failed\n");
     freeproc(p);
     release(&p->lock);
     return 0;
   }
-  // 初始化 USYSCALL 数据
   p->usyscall->pid = p->pid;
   
-
-
   // Rest of the initialization...
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -236,9 +222,10 @@ proc_pagetable(struct proc *p)
 
   // 映射到用户空间
   if(mappages(pagetable, USYSCALL, PGSIZE,
-              (uint64)p->usyscall, PTE_R | PTE_U) < 0){
-    uvmunmap(pagetable, TRAPFRAME, 1,0);
-    uvmfree(pagetable,0);
+          (uint64)(p->usyscall), PTE_R | PTE_U) < 0){
+    uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+    uvmunmap(pagetable, TRAPFRAME, 1, 0);
+    uvmfree(pagetable, 0);
     return 0;
   }
 

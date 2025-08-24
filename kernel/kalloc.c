@@ -25,23 +25,18 @@ struct {
 // 为链表新增超级页实例
 
 // 新增的init函数，初始化超级页的空闲链表
-void superinit(){
+void
+superinit()
+{
   initlock(&supermem.lock, "supermem");
-  char *p;
-  p = (char*)SUPERPGROUNDUP((uint64)SUPERBASE);
-  printf("superinit: start=%p, end=%lx\n", p, PHYSTOP);
-
-  for(; p + SUPERPGSIZE <= (char*)PHYSTOP; p += SUPERPGSIZE){
-    printf("superfree: %p\n", p);
+  char *p = (char*) SUPERPGROUNDUP(SUPERBASE);
+  for (; p + SUPERPGSIZE <= (char*)PHYSTOP; p += SUPERPGSIZE)
     superfree(p);
-  }
 }
 
 void
 kinit()
 {
-  printf("kinit: freeing range %p to %p\n", end, (void*)SUPERBASE);
-  printf("superinit: superbase=%lx, phystop=%lx\n", SUPERBASE, PHYSTOP);
   initlock(&kmem.lock, "kmem");
   freerange(end, (void*)SUPERBASE);
   superinit();
@@ -84,24 +79,6 @@ kfree(void *pa)
   release(&kmem.lock);
 }
 
-//free超级页
-void superfree(void *pa) {
-  // printf("superfree: freeing superpage at %p\n", pa);
-  struct run *r;
-  // 改成超级页的尺寸
-  if(((uint64)pa % SUPERPGSIZE) != 0 || (uint64)pa < SUPERBASE || (uint64)pa >= PHYSTOP)
-    panic("superfree");
-  // memset，将内存为都置1，表示处于空闲中
-  memset(pa, 1, SUPERPGSIZE);
-  
-  r = (struct run*)pa;
-  // 加锁，保证链表插入顺序
-  acquire(&supermem.lock);
-  r->next = supermem.freelist;
-  supermem.freelist = r;
-  release(&supermem.lock);
-}
-
 // Allocate one 4096-byte page of physical memory.
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
@@ -121,26 +98,42 @@ kalloc(void)
   return (void*)r;
 }
 
-void* superalloc(void) {
+void
+superfree(void *pa)
+{
   struct run *r;
-  // 获取锁
+
+  if(((uint64)pa % SUPERPGSIZE) != 0 || (char*)pa < (char*)SUPERBASE || (uint64)pa >= PHYSTOP)
+    panic("superfree");
+
+  // Fill with junk to catch dangling refs.
+  memset(pa, 1, SUPERPGSIZE);
+
+  r = (struct run*)pa;
+
+  acquire(&supermem.lock);
+  r->next = supermem.freelist;
+  supermem.freelist = r;
+  release(&supermem.lock);
+}
+
+// Allocate one 2MB page of physical memory.
+// Returns a pointer that the kernel can use.
+// Returns 0 if the memory cannot be allocated.
+void *
+superalloc(void)
+{
+  struct run *r;
+
   acquire(&supermem.lock);
   r = supermem.freelist;
-  if(r){
-    // printf("Allocating superpage at: 0x%lx\n", (uint64)r);
-    //更新空闲页链表
+  if(r)
     supermem.freelist = r->next;
-  }
-  // else{
-  //   printf("superalloc: no free superpages available\n");
-  // }
   release(&supermem.lock);
 
-  if(r){
+  if(r)
     memset((char*)r, 5, SUPERPGSIZE); // fill with junk
-    // printf("superalloc: allocated superpage at %p\n", r);
-  }
-  return (void*)r; 
+  return (void*)r;
 }
 
 int count_free_pages() {
