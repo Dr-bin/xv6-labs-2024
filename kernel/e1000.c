@@ -101,8 +101,50 @@ e1000_transmit(char *buf, int len)
   // the TX descriptor ring so that the e1000 sends it. Stash
   // a pointer so that it can be freed after send completes.
   //
+  acquire(&e1000_lock);
 
+  // 1. 获取当前TDT索引
+  uint32 index = regs[E1000_TDT];
+  struct tx_desc *desc = &tx_ring[index];
+
+  // 2. 检查描述符是否可用（DD位是否置位）
+  if ((desc->status & E1000_TXD_STAT_DD) == 0) {
+    // 描述符还在被网卡使用，环已满
+    release(&e1000_lock);
+    return -1;
+  }
+
+  // 3. 释放之前可能存在的缓冲区
+  if (tx_bufs[index]) {
+    kfree(tx_bufs[index]);
+    tx_bufs[index] = 0;
+  }
+
+  // 4. 分配新的缓冲区并复制数据
+  char *new_buf = kalloc();
+  if (!new_buf) {
+    release(&e1000_lock);
+    return -1;
+  }
+  memmove(new_buf, buf, len);
+
+  // 5. 设置描述符
+  desc->addr = (uint64)new_buf;  // 设置数据包物理地址
+  desc->length = len;            // 设置数据包长度
   
+  // 设置命令字段：要求状态报告、这是包结尾、生成CRC
+  desc->cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP;
+  
+  desc->status = 0;              // 清除状态位
+
+  // 6. 保存缓冲区指针以便后续释放
+  tx_bufs[index] = new_buf;
+
+  // 7. 更新TDT寄存器，通知网卡有新的数据包
+  uint32 next_index = (index + 1) % TX_RING_SIZE;
+  regs[E1000_TDT] = next_index;
+
+  release(&e1000_lock);
   return 0;
 }
 
@@ -115,7 +157,51 @@ e1000_recv(void)
   // Check for packets that have arrived from the e1000
   // Create and deliver a buf for each packet (using net_rx()).
   //
+  acquire(&e1000_lock);
 
+  // 1. 获取下一个要检查的描述符索引
+  uint32 rdt = regs[E1000_RDT];
+  uint32 index = (rdt + 1) % RX_RING_SIZE;
+
+  // 2. 检查是否有新数据包
+  while ((rx_ring[index].status & E1000_RXD_STAT_DD)) {
+    struct rx_desc *desc = &rx_ring[index];
+
+    // 3. 获取数据包长度
+    uint16 length = desc->length;
+
+    // 4. 保存缓冲区指针，因为我们需要在释放锁后传递给网络栈
+    char *buf = rx_bufs[index];
+
+    // 5. 分配新缓冲区来替换
+    char *new_buf = kalloc();
+    if (!new_buf) {
+      panic("e1000_recv: mbufalloc failed");
+    }
+
+    // 6. 更新描述符和缓冲区数组
+    rx_bufs[index] = new_buf;
+    desc->addr = (uint64)new_buf;
+    desc->status = 0;  // 清除状态位
+
+    // 7. 更新RDT寄存器，告诉硬件这个描述符可以重用
+    regs[E1000_RDT] = index;
+
+    // 8. 移动到下一个描述符
+    index = (index + 1) % RX_RING_SIZE;
+
+    // 9. 释放锁，然后将缓冲区传递给网络栈
+    // 这样可以避免死锁，因为 net_rx 可能会调用 e1000_transmit
+    release(&e1000_lock);
+    net_rx(buf, length);
+    acquire(&e1000_lock);
+
+    // 重新获取当前状态，继续处理下一个数据包
+    rdt = regs[E1000_RDT];
+    index = (rdt + 1) % RX_RING_SIZE;
+  }
+
+  release(&e1000_lock);
 }
 
 void
