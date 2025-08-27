@@ -16,6 +16,8 @@
 #include "file.h"
 #include "fcntl.h"
 
+#define MAX_SYMLINK_DEPTH 10
+
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
 static int
@@ -341,6 +343,43 @@ sys_open(void)
     return -1;
   }
 
+  // 处理符号链接
+  if(ip->type == T_SYMLINK && !(omode & O_NOFOLLOW)) {
+      char target[MAXPATH];
+      int len, depth;
+
+      for(depth = 0; depth < MAX_SYMLINK_DEPTH; depth++) {
+          len = ip->size;
+          if(len >= MAXPATH) len = MAXPATH - 1;
+
+          if(readi(ip, 0, (uint64)target, 0, len) != len) {
+              iunlockput(ip);
+              end_op();
+              return -1;
+          }
+          target[len] = '\0';   // 确保字符串终止
+
+          iunlockput(ip);
+
+          ip = namei(target);
+          if(ip == 0) {
+              end_op();
+              return -1;
+          }
+          ilock(ip);
+
+          if(ip->type != T_SYMLINK)
+              break; // 解析到普通文件/目录，跳出
+      }
+
+      if(depth == MAX_SYMLINK_DEPTH) {
+          iunlockput(ip);
+          end_op();
+          return -1; // 超过最大解析深度
+      }
+  }
+
+
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)
       fileclose(f);
@@ -501,5 +540,40 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+uint64
+sys_symlink(void)
+{
+  char target[MAXPATH], path[MAXPATH];
+  struct inode *ip;
+  int len;
+
+  if(argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
+    return -1;
+
+  begin_op();
+
+  if((ip = create(path, T_SYMLINK, 0, 0)) == 0){
+    end_op();
+    return -1;
+  }
+
+  // 写入实际长度 + '\0'
+  len = strlen(target) + 1;
+  if(writei(ip, 0, (uint64)target, 0, len) != len){
+    iunlockput(ip);
+    end_op();
+    return -1;
+  }
+
+  // 更新 inode 大小
+  ip->size = len;
+  iupdate(ip);
+
+  iunlockput(ip);
+  end_op();
+
   return 0;
 }
