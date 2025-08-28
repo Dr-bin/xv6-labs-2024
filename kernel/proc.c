@@ -3,8 +3,12 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "spinlock.h"
+#include "sleeplock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fs.h"
+#include "file.h"
+#include "fcntl.h"
 
 struct cpu cpus[NCPU];
 
@@ -145,6 +149,8 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+
+  memset(&p->vma, 0, sizeof(p->vma));
 
   return p;
 }
@@ -308,6 +314,14 @@ fork(void)
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
 
+  // 复制父进程的VMA
+  for(i = 0; i < NVMA; ++i) {
+    if(p->vma[i].used) {
+      memmove(&np->vma[i], &p->vma[i], sizeof(p->vma[i]));
+      filedup(p->vma[i].vfile);
+    }
+  }
+
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
@@ -357,6 +371,50 @@ exit(int status)
       struct file *f = p->ofile[fd];
       fileclose(f);
       p->ofile[fd] = 0;
+    }
+  }
+
+  // 将进程的已映射区域取消映射
+  for(int i = 0; i < NVMA; ++i) {
+    if(p->vma[i].used) {
+      if(p->vma[i].flags == MAP_SHARED && (p->vma[i].prot & PROT_WRITE) != 0) {
+        // 逐页写回文件
+        struct file* vf = p->vma[i].vfile;
+
+        for(uint64 va = p->vma[i].addr; va < p->vma[i].addr + p->vma[i].len; va += PGSIZE) {
+          pte_t *pte = walk(p->pagetable, va, 0);
+          if(pte && (*pte & PTE_V)) {
+            // 页面存在，需要写回
+            uint64 pa = PTE2PA(*pte);
+            uint64 offset = p->vma[i].offset + (va - p->vma[i].addr);
+            int write_size = PGSIZE;
+            if(va + PGSIZE > p->vma[i].addr + p->vma[i].len) {
+              write_size = p->vma[i].addr + p->vma[i].len - va;
+            }
+
+            // 开始事务，锁定inode，获取文件大小，写入文件，结束事务
+            begin_op();
+            ilock(vf->ip);
+
+            // 检查文件大小，只写回文件原始大小范围内的数据
+            uint file_size = vf->ip->size;
+            if(offset < file_size) {
+              if(offset + write_size > file_size) {
+                write_size = file_size - offset;
+              }
+              if(write_size > 0) {
+                writei(vf->ip, 0, pa, offset, write_size);
+              }
+            }
+
+            iunlock(vf->ip);
+            end_op();
+          }
+        }
+      }
+      fileclose(p->vma[i].vfile);
+      uvmunmap(p->pagetable, p->vma[i].addr, p->vma[i].len / PGSIZE, 1);
+      p->vma[i].used = 0;
     }
   }
 
